@@ -1,10 +1,6 @@
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.Net.Http.Headers;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using GuedesPlace.DoorLabel.Models;
-using Microsoft.Extensions.Azure;
+using SkiaSharp;
 
 namespace GuedesPlace.DoorLabel.Services;
 public class GeneratePictureService(ILogger<GeneratePictureService> logger)
@@ -16,64 +12,97 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
         List<int> grayScale = [];
         float rightShift = 10F;
 
-        PointF firstLocation = new PointF(10f, 10f);
-
-        //Bitmap bitmap = (Bitmap)Image.FromFile(imageFilePath);//load the image file
-        Bitmap bitmap = new Bitmap(540, 960);
-
-
-        using (Graphics graphics = Graphics.FromImage(bitmap))
+        var skBitmap = new SKBitmap(540, 960);
+        using (var canvas = new SKCanvas(skBitmap))
         {
-            Font arialFont24 = new Font("Arial", 24, FontStyle.Bold);
-            Font arialFont20 = new Font("Arial", 20);
-            Font arialFont20Italic = new Font("Arial", 20, FontStyle.Italic);
-
-
-            graphics.Clear(Color.White);
-            graphics.FillRectangle(Brushes.Black, 0, 0, 540, 54);
-
-            graphics.DrawString(label.Name, arialFont24, Brushes.White, firstLocation);
-
-            var startPoint = 75F;
-            foreach (var element in label.Elements)
+            canvas.Clear(SKColors.White);
+            using SKPaint paintHeader = new()
             {
-                graphics.DrawString(element.Name, arialFont24, Brushes.Black, rightShift, startPoint);
+                Color = SKColors.White,
+                IsAntialias = true,
+                TextSize = 30,
+                Typeface = SKTypeface.FromFamilyName(
+                    familyName: "Arial",
+                    weight: SKFontStyleWeight.Bold,
+                    width: SKFontStyleWidth.SemiExpanded, 
+                    slant:SKFontStyleSlant.Upright),
+            };
+            using SKPaint paintName = new()
+            {
+                Color = SKColors.Black,
+                IsAntialias = true,
+                TextSize = 30,
+                Typeface = SKTypeface.FromFamilyName(
+                    familyName: "Arial",
+                    weight: SKFontStyleWeight.Bold,
+                    width: SKFontStyleWidth.Normal, 
+                    slant:SKFontStyleSlant.Upright),
+            };
+            using SKPaint paintSubtitle = new()
+            {
+                Color = SKColors.Black,
+                IsAntialias = true,
+                TextSize = 24,
+                Typeface = SKTypeface.FromFamilyName(
+                    familyName: "Arial",
+                    weight: SKFontStyleWeight.Normal,
+                    width: SKFontStyleWidth.Normal, 
+                    slant:SKFontStyleSlant.Upright),
+            };
+            using SKPaint paintOutOfOffice = new()
+            {
+                Color = SKColors.Black,
+                IsAntialias = true,
+                TextSize = 24,
+                Typeface = SKTypeface.FromFamilyName(
+                    familyName: "Arial",
+                    weight: SKFontStyleWeight.Normal,
+                    width: SKFontStyleWidth.Normal, 
+                    slant:SKFontStyleSlant.Italic),
+            };
+            using var paint = new SKPaint();
+            paint.Color = SKColors.Black;
+            var square = new SKRect(0, 0, 540, 54);
+            canvas.DrawRect(square, paint);
+            canvas.DrawText(label.Name, 10F, 40F, paintHeader);
+            var startPoint = 95F;
+            foreach(var element in label.Elements) 
+            {
+                canvas.DrawText(element.Name, rightShift, startPoint, paintName);
                 startPoint += 37;
-                graphics.DrawString(element.Title, arialFont20, Brushes.Black, rightShift, startPoint);
+                canvas.DrawText(element.Title, rightShift, startPoint, paintSubtitle);
                 startPoint += 31;
 
                 if (element.OutOfOfficeUntil.HasValue)
                 {
                     var until = $"Abwesend bis: {element.OutOfOfficeUntil.Value:dd.MM.yyyy}";
-                    graphics.DrawString(until, arialFont20Italic, Brushes.DarkGray, rightShift, startPoint);
+                    canvas.DrawText(until, rightShift, startPoint, paintOutOfOffice);
                     startPoint += 31;
                 }
                 startPoint += 20;
             }
+        };
 
 
-            arialFont20Italic.Dispose();
-            arialFont20.Dispose();
-            arialFont24.Dispose();
-        }
-            for (int x = 0; x < 540; x++)
+        for (int x = 0; x < 540; x++)
+        {
+            for (var y = 959; y >= 0; y--)
             {
-                for (var y = 959; y >= 0; y--)
+                if (y % 2 == 0)
                 {
-                    if (y % 2 == 0) {
-                        var c = bitmap.GetPixel(x,y);
-                        int grayScaleValue = (int)((c.R * 0.2126) + (c.G * 0.7152) + (c.B * 0.0722));
-                        grayScale.Add(grayScaleValue);
+                    var c = skBitmap.GetPixel(x, y);
+                    int grayScaleValue = (int)((c.Red * 0.2126) + (c.Green * 0.7152) + (c.Blue * 0.0722));
+                    grayScale.Add(grayScaleValue);
 
-                    }
                 }
             }
+        }
 
         using (var stream = new MemoryStream())
         {
 
-            bitmap.Save(stream, ImageFormat.Png);//save the image file
-            return new PictureCreationResult() { Data = new BinaryData(stream.ToArray()), GreyScale=grayScale };
+            skBitmap.Encode(stream, SKEncodedImageFormat.Png, quality: 100);//save the image file
+            return new PictureCreationResult() { Data = new BinaryData(stream.ToArray()), GreyScale = grayScale };
         }
     }
 }
