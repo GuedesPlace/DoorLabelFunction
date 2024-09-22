@@ -18,7 +18,7 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
     private readonly ILogger<DeviceEndpointService> _logger = logger;
     private readonly TypedAzureTableClient<DeviceStatus> _tableClient = tableClientService.GetTypedTableClient<DeviceStatus>();
     private readonly BlobContainerClient _picturesContainer = blobClientFactory.CreateClient("pictures").GetBlobContainerClient("pictures");
-
+    
     public async Task<List<DeviceStatus>> GetAllDevicesByCrmEndpointId(string crmEndpointId)
     {
         var all = await _tableClient.GetAllAsync(crmEndpointId);
@@ -54,20 +54,32 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
         var result = await blobClient.DownloadContentAsync();
         return result.Value.Content;
     }
-    public async Task<RoomLabel> GetRoomLabelAsync(string deviceId, DynamicsConnector connector)
+    public async Task<RoomLabel> GetRoomLabelAsync(string deviceId, DynamicsConnector connector, string crmURL)
     {
-        var query = $"gp_roomdisplaies({deviceId})?$expand=gp_roomdisplay_SystemUser_SystemUser($select=fullname,title)";
+        var query = $"gp_roomdisplaies({deviceId})?$expand=gp_roomdisplay_SystemUser_SystemUser($select=fullname,title),gp_configuration";
         var result = await connector.GetAsync<DynamicsRoomDisplay>(query);
         if (result == null)
         {
             return null;
         }
+        var pictureData = await RetrievePossiblePictureData(result.Configuration, connector, crmURL);
         return new RoomLabel()
         {
             Name = result.Name,
-            Elements = result.Users.Select(user => new RoomLabelElement() { Name = user.Name, Title = user.Title }).OrderBy(e1 => e1.Name).ToList()
+            Elements = result.Users.Select(user => new RoomLabelElement() { Name = user.Name, Title = user.Title }).OrderBy(e1 => e1.Name).ToList(),
+            Configuration = result.Configuration,
+            picture= pictureData
         };
     }
+
+    private async Task<byte[]?> RetrievePossiblePictureData(DynamicsDisplayConfiguration configuration, DynamicsConnector connector, string crmURL)
+    {
+        if (!configuration.gp_has_picture || string.IsNullOrEmpty(configuration.gp_picture_url)) {
+            return null;
+        }
+        return await connector.GetPictureDataAsync("gp_displayconfigurations",configuration.gp_displayconfigurationid,"gp_picture");
+    }
+
     public async Task UploadAndSavePicture(DeviceStatus deviceStatus, DynamicsConnector connector, BinaryData content, PictureGreyScaleStorage pictureGreyScaleStorage)
     {
         var blobClient = _picturesContainer.GetBlobClient($"{deviceStatus.CrmEndpointId}/{deviceStatus.CrmID}.png");

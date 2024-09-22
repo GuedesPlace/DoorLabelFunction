@@ -10,4 +10,5 @@ public class PictureGreyScaleStorage
 {
     public List<int> GreyScale { get; set; }
     public string PictureHash { get; set; }
+    public string GreyScaleBase64 { get; set; }
 }

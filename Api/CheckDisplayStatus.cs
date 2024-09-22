@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using GuedesPlace.DoorLabel.Models;
 using GuedesPlace.DoorLabel.Services;
 using Microsoft.Azure.Functions.Worker;
@@ -12,6 +14,7 @@ public class CheckDisplayStatus(ILogger<CheckDisplayStatus> logger, CrmEndpointS
     private readonly CrmEndpointService _crmEndpointService = crmEndpointService;
     private readonly DeviceEndpointService _deviceEndpointService = deviceEndpointService;
     private readonly GeneratePictureService _pictureService = pictureService;
+    private readonly SHA256 sha256Hash = SHA256.Create();
 
 
     [Function("CheckDisplayStatus")]
@@ -39,23 +42,25 @@ public class CheckDisplayStatus(ILogger<CheckDisplayStatus> logger, CrmEndpointS
             _logger.LogError($"No Connector found for: {crmEndpointId}");
             return;
         }
+        var crmURL = await _crmEndpointService.GetDynamicsURLAsync(crmEndpointId);
         var devices = await _deviceEndpointService.GetAllDevicesByCrmEndpointId(crmEndpointId);
         foreach (var device in devices)
         {
-            await ProcessDevice(device, dynamicsConnection);
+            await ProcessDevice(device, dynamicsConnection, crmURL);
         }
     }
 
-    private async Task ProcessDevice(DeviceStatus device, DynamicsConnector dynamicsConnection)
+    private async Task ProcessDevice(DeviceStatus device, DynamicsConnector dynamicsConnection, string crmURL)
     {
-        var label = await _deviceEndpointService.GetRoomLabelAsync(device.CrmID, dynamicsConnection);
+        var label = await _deviceEndpointService.GetRoomLabelAsync(device.CrmID, dynamicsConnection, crmURL);
         var labelString = JsonConvert.SerializeObject(label, Formatting.None);
-        var labelHash = $"0x{labelString.GetHashCode():X8}_{device.CrmID}";
+        var labelHash = GetHash(sha256Hash,labelString);
         _logger.LogInformation($"labelString...: {labelString}");
         _logger.LogInformation($"labelHash: {labelHash} -> {device.PictureHash}");
         if (labelHash != device.PictureHash) {
             var picture = _pictureService.CreatePicture(label);
-            var pictureGreyScaleStorage = new PictureGreyScaleStorage(){GreyScale = picture.GreyScale, PictureHash=labelHash};
+            var greyScaleBytes = picture.GreyScale.Select(i=>intToByteArray(i)).SelectMany(x=>x).ToArray();
+            var pictureGreyScaleStorage = new PictureGreyScaleStorage(){GreyScale = picture.GreyScale, PictureHash=labelHash, GreyScaleBase64 = Convert.ToBase64String(greyScaleBytes)};
             await _deviceEndpointService.UploadAndSavePicture( device, dynamicsConnection,picture.Data, pictureGreyScaleStorage);
             device.PictureHash = labelHash;
             await _deviceEndpointService.UpdateDeviceStatus(device);
@@ -67,6 +72,29 @@ public class CheckDisplayStatus(ILogger<CheckDisplayStatus> logger, CrmEndpointS
         bytes[0] = (byte)(i >> 8);
         bytes[1] = (byte)i;
         return bytes;
+    }
+    private string GetHash(HashAlgorithm hashAlgorithm, string input) 
+    {
+        byte[] data = hashAlgorithm.ComputeHash(Encoding.UTF8.GetBytes(input));
+
+        // Create a new Stringbuilder to collect the bytes
+        // and create a string.
+        var sBuilder = new StringBuilder();
+
+        // Loop through each byte of the hashed data
+        // and format each one as a hexadecimal string.
+        for (int i = 0; i < data.Length; i++)
+        {
+            sBuilder.Append(data[i].ToString("x2"));
+        }
+
+        // Return the hexadecimal string.
+        return sBuilder.ToString();
+    }
+    private bool CheckHash(string hash, string newHash) {
+        StringComparer comparer = StringComparer.OrdinalIgnoreCase;
+
+        return comparer.Compare(newHash, hash) == 0;
     }
 }
 
