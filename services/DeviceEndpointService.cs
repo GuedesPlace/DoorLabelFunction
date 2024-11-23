@@ -17,8 +17,9 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
 
     private readonly ILogger<DeviceEndpointService> _logger = logger;
     private readonly TypedAzureTableClient<DeviceStatus> _tableClient = tableClientService.GetTypedTableClient<DeviceStatus>();
+    private readonly TypedAzureTableClient<DeviceLog> _tableClientDeviceLog = tableClientService.GetTypedTableClient<DeviceLog>();
     private readonly BlobContainerClient _picturesContainer = blobClientFactory.CreateClient("pictures").GetBlobContainerClient("pictures");
-    
+
     public async Task<List<DeviceStatus>> GetAllDevicesByCrmEndpointId(string crmEndpointId)
     {
         var all = await _tableClient.GetAllAsync(crmEndpointId);
@@ -68,16 +69,17 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
             Name = result.Name,
             Elements = result.Users.Select(user => new RoomLabelElement() { Name = user.Name, Title = user.Title }).OrderBy(e1 => e1.Name).ToList(),
             Configuration = result.Configuration,
-            picture= pictureData
+            picture = pictureData
         };
     }
 
     private async Task<byte[]?> RetrievePossiblePictureData(DynamicsDisplayConfiguration configuration, DynamicsConnector connector, string crmURL)
     {
-        if (!configuration.gp_has_picture || string.IsNullOrEmpty(configuration.gp_picture_url)) {
+        if (!configuration.gp_has_picture || string.IsNullOrEmpty(configuration.gp_picture_url))
+        {
             return null;
         }
-        return await connector.GetPictureDataAsync("gp_displayconfigurations",configuration.gp_displayconfigurationid,"gp_picture");
+        return await connector.GetPictureDataAsync("gp_displayconfigurations", configuration.gp_displayconfigurationid, "gp_picture");
     }
 
     public async Task UploadAndSavePicture(DeviceStatus deviceStatus, DynamicsConnector connector, BinaryData content, PictureGreyScaleStorage pictureGreyScaleStorage)
@@ -105,10 +107,20 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
         };
         await blobClient.UploadAsync(stream, uploadOptions);
     }
-    public async Task<PictureGreyScaleStorage> GetPictureGreyScaleStorageAsync(DeviceStatus deviceStatus) {
+    public async Task<PictureGreyScaleStorage> GetPictureGreyScaleStorageAsync(DeviceStatus deviceStatus)
+    {
         var blobClient = _picturesContainer.GetBlobClient($"{deviceStatus.CrmEndpointId}/{deviceStatus.CrmID}.json");
         BlobDownloadResult downloadResult = await blobClient.DownloadContentAsync();
         string blobContents = downloadResult.Content.ToString();
         return JsonConvert.DeserializeObject<PictureGreyScaleStorage>(blobContents);
+    }
+    public async Task WriteLog(DeviceLog deviceLog)
+    {
+        var logDate = deviceLog.LogDate;
+        if (logDate.HasValue)
+        {
+            await _tableClientDeviceLog.InsertOrReplaceAsync(logDate.Value.ToString("yyyy-MM-dd-hh-mm-ss"), deviceLog.MacAsId, deviceLog);
+
+        }
     }
 }

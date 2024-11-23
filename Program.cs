@@ -24,6 +24,7 @@ var host = new HostBuilder()
             var extendedAzureTableService = new ExtendedAzureTableClientService(storageConnection);
             extendedAzureTableService.CreateAndRegisterTableClient<CrmEndpoint>("CrmEndpoint");
             extendedAzureTableService.CreateAndRegisterTableClient<DeviceStatus>("DeviceStatus");
+            extendedAzureTableService.CreateAndRegisterTableClient<DeviceLog>("DeviceLog");
             return extendedAzureTableService;
         });
         services.AddSingleton<CrmEndpointService>();
