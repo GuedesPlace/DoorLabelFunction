@@ -2,6 +2,8 @@ using Microsoft.Extensions.Logging;
 using GuedesPlace.DoorLabel.Models;
 using SkiaSharp;
 using Azure.Core.GeoJson;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.ObjectPool;
 
 namespace GuedesPlace.DoorLabel.Services;
 public class GeneratePictureService(ILogger<GeneratePictureService> logger)
@@ -12,7 +14,7 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
     {
         DynamicsDisplayConfiguration configuration = label.Configuration;
         List<int> grayScale = [];
-        
+
         var skBitmap = new SKBitmap(540, 960);
         using (var canvas = new SKCanvas(skBitmap))
         {
@@ -26,30 +28,25 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
             //paint.Color = SKColors.Black;
             //var square = new SKRect(0, 0, 540, 54);
             //canvas.DrawRect(square, paint);
-            if (configuration.gp_has_picture && label.picture != null) {
-                ProcessPictureToCanvas(canvas,label.picture,configuration);
+            if (configuration.gp_has_picture && label.picture != null)
+            {
+                ProcessPictureToCanvas(canvas, label.picture, configuration);
             }
             var xPostion = CalculateXPosition(configuration.gp_alignment_header, configuration.gp_margin_left, configuration.gp_margin_right, label.Name, paintHeader);
             canvas.DrawText(label.Name, xPostion, (float)configuration.gp_start_header_block, paintHeader);
-            var startPoint = (float) configuration.gp_start_employee_block;
+            var startPoint = (float)configuration.gp_start_employee_block;
+            var lineLength = 540 - configuration.gp_margin_left - configuration.gp_margin_right;
             foreach (var element in label.Elements)
             {
-                var xPositionName = CalculateXPosition(configuration.gp_alignment_name, configuration.gp_margin_left, configuration.gp_margin_right, element.Name, paintName);
-                canvas.DrawText(element.Name, xPositionName, startPoint, paintName);
-                startPoint += (float)(configuration.gp_font_size_name * 1.2);
-
-                var xPositionTitle = CalculateXPosition(configuration.gp_alignment_title, configuration.gp_margin_left, configuration.gp_margin_right, element.Title, paintSubtitle);
-                canvas.DrawText(element.Title, xPositionTitle, startPoint, paintSubtitle);
-                startPoint += (float)(configuration.gp_font_size_title * 1.2);
+                startPoint = WriteText(canvas,element.Name,lineLength,paintName,configuration.gp_alignment_name,startPoint,configuration);
+                startPoint = WriteText(canvas,element.Title,lineLength,paintSubtitle,configuration.gp_alignment_title,startPoint,configuration);
 
                 if (element.OutOfOfficeUntil.HasValue)
                 {
                     var until = $"Abwesend bis: {element.OutOfOfficeUntil.Value:dd.MM.yyyy}";
-                    var xPositionLeave = CalculateXPosition(configuration.gp_alignment_leave, configuration.gp_margin_left, configuration.gp_margin_right, until, paintOutOfOffice);
-                    canvas.DrawText(until, xPositionLeave, startPoint, paintOutOfOffice);
-                    startPoint += (float)(configuration.gp_font_size_leave * 1.2);
+                    startPoint = WriteText(canvas,until,lineLength,paintOutOfOffice,configuration.gp_alignment_leave,startPoint,configuration);                  
                 }
-                startPoint += 20;
+                startPoint += 10;
             }
         };
 
@@ -76,8 +73,8 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
 
     private void ProcessPictureToCanvas(SKCanvas canvas, byte[] data, DynamicsDisplayConfiguration configuration)
     {
-        SKImage skImage= SKImage.FromEncodedData(data);
-        canvas.DrawImage(skImage,(float)configuration.gp_picture_position_x,(float)configuration.gp_picture_position_y);
+        SKImage skImage = SKImage.FromEncodedData(data);
+        canvas.DrawImage(skImage, (float)configuration.gp_picture_position_x, (float)configuration.gp_picture_position_y);
     }
 
     private SKPaint CreatePaint(string fontFamilyName, int size, int weight, int style)
@@ -132,16 +129,55 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
         }
         return SKFontStyleSlant.Upright;
     }
-    private float CalculateXPosition(int alignment, int margin_left, int margin_right, string text, SKPaint paint) {
-        if (alignment == 122810000) {
+    private float CalculateXPosition(int alignment, int margin_left, int margin_right, string text, SKPaint paint)
+    {
+        if (alignment == 122810000)
+        {
             return (float)margin_left;
         }
         SKRect rect = new();
-        paint.MeasureText(text,ref rect);
+        paint.MeasureText(text, ref rect);
         var width = rect.Width;
-        if (alignment == 122810001) {
-            return (float)(270 - (width/2));
+        if (alignment == 122810001)
+        {
+            return (float)(270 - (width / 2));
         }
         return 540 - margin_right - width;
+    }
+    private List<string> GetWrappedLines(string longLine, float lineLengthLimit, SKPaint defPaint)
+    {
+        var wrappedLines = new List<string>();
+        var lineLength = 0f;
+        var line = "";
+        foreach (var word in longLine.Split(' '))
+        {
+            var wordWithSpace = word + " ";
+            var wordWithSpaceLength = defPaint.MeasureText(wordWithSpace);
+            if (lineLength + wordWithSpaceLength > lineLengthLimit)
+            {
+                wrappedLines.Add(line);
+                line = "" + wordWithSpace;
+                lineLength = wordWithSpaceLength;
+            }
+            else
+            {
+                line += wordWithSpace;
+                lineLength += wordWithSpaceLength;
+            }
+        }
+        wrappedLines.Add(line);
+        return wrappedLines;
+    }
+    private float WriteText(SKCanvas canvas, string text, float lineLength, SKPaint skPaint, int alignment, float lastStart, DynamicsDisplayConfiguration configuration )
+    {
+        float startPoint = lastStart;
+        var wrappedLines = GetWrappedLines(text, lineLength, skPaint);
+        foreach (var wrappedLine in wrappedLines)
+        {
+            startPoint += skPaint.FontSpacing;
+            var xPositionName = CalculateXPosition(alignment, configuration.gp_margin_left, configuration.gp_margin_right, wrappedLine, skPaint);
+            canvas.DrawText(wrappedLine, xPositionName, startPoint, skPaint);
+        }
+        return startPoint;
     }
 }
