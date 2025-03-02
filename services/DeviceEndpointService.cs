@@ -9,6 +9,7 @@ using Newtonsoft.Json.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Azure.Storage.Blobs.Models;
+using Microsoft.VisualBasic;
 
 namespace GuedesPlace.DoorLabel.Services;
 
@@ -18,6 +19,7 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
     private readonly ILogger<DeviceEndpointService> _logger = logger;
     private readonly TypedAzureTableClient<DeviceStatus> _tableClient = tableClientService.GetTypedTableClient<DeviceStatus>();
     private readonly TypedAzureTableClient<DeviceLog> _tableClientDeviceLog = tableClientService.GetTypedTableClient<DeviceLog>();
+    private readonly TypedAzureTableClient<DeviceToRegister> _tableClientDeviceToRegister = tableClientService.GetTypedTableClient<DeviceToRegister>();
     private readonly BlobContainerClient _picturesContainer = blobClientFactory.CreateClient("pictures").GetBlobContainerClient("pictures");
 
     public async Task<List<DeviceStatus>> GetAllDevicesByCrmEndpointId(string crmEndpointId)
@@ -35,7 +37,7 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
         var result = await _tableClient.InsertOrMergeAsync(deviceStatus.MacAsId, deviceStatus.CrmEndpointId, deviceStatus);
         return;
     }
-    public async Task<DeviceStatus> GetDeviceStatus(string macAsId)
+    public async Task<DeviceStatus?> GetDeviceStatus(string macAsId)
     {
         var query = $"RowKey eq '{macAsId}'";
         var result = await _tableClient.GetAllByQueryAsync(query);
@@ -47,7 +49,7 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
         {
             throw new Exception("Only one Device should be registered per MacID");
         }
-        return result.FirstOrDefault().Entity;
+        return result.FirstOrDefault()?.Entity;
     }
     public async Task<BinaryData> RetrieveDeviceImage(DeviceStatus deviceStatus)
     {
@@ -121,6 +123,16 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
         {
             await _tableClientDeviceLog.InsertOrReplaceAsync(logDate.Value.ToString("yyyy-MM-dd-hh-mm-ss"), deviceLog.MacAsId, deviceLog);
 
+        }
+    }
+    public async Task AddDeviceToRegister(string macAsId) {
+        var registrationEntry = await _tableClientDeviceToRegister.GetByIdAsync(macAsId,"open");
+        if (registrationEntry == null) {
+            var DeviceToRegister = new DeviceToRegister() {
+                MacAsId = macAsId,
+                RegistrationRequestDate = DateTime.UtcNow
+            };
+            await _tableClientDeviceToRegister.InsertOrReplaceAsync(macAsId,"open", DeviceToRegister);
         }
     }
 }

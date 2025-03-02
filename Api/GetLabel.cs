@@ -19,6 +19,7 @@ public class GetLabel(ILogger<GetLabel> logger, GeneratePictureService pictureSe
         var deviceStatus = await _deviceEndpointService.GetDeviceStatus(macId);
         if (deviceStatus == null)
         {
+            await _deviceEndpointService.AddDeviceToRegister(macId);
             return new NoContentResult();
         }
         var currentLog = await req.ReadFromJsonAsync<DeviceLog>();
@@ -30,10 +31,10 @@ public class GetLabel(ILogger<GetLabel> logger, GeneratePictureService pictureSe
         }
         if (deviceStatus.PictureHash == hash)
         {
-            return new OkObjectResult(new { status = "nochange" });
+            return new OkObjectResult(new { status = "nochange", hash=hash });
         }
-        var greyScale = await _deviceEndpointService.GetPictureGreyScaleStorageAsync(deviceStatus);
-        return new OkObjectResult(new { status = "changed", hash = greyScale.PictureHash });
+        //var greyScale = await _deviceEndpointService.GetPictureGreyScaleStorageAsync(deviceStatus);
+        return new OkObjectResult(new { status = "changed", hash = deviceStatus.PictureHash });
     }
     [Function("GetLabelPicture")]
     public async Task<IActionResult> GetLabelPictureRun([HttpTrigger(AuthorizationLevel.Function, "get", Route = "deviceimage/{macId}")] HttpRequest req, string macId)
