@@ -34,6 +34,7 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
             var startPoint = (float)configuration.gp_start_employee_block;
             var lineLength = 540 - configuration.gp_margin_left - configuration.gp_margin_right;
             var orderedElements = OrderElements(label.Elements, label.SpecialSortOrder);
+            _logger.LogInformation("Elements: "+ orderedElements.Count);
             foreach (var element in orderedElements)
             {
                 startPoint = WriteText(canvas,element.Name,lineLength,paintName,configuration.gp_alignment_name,startPoint,configuration);
@@ -76,7 +77,7 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
         }
         var sortOrderEmails = specialSortOrder.Split("\n").Select(x=>x.Trim()).ToList();
         var elementsOrdered = sortOrderEmails.Select(x=>elements.Find(roomLabelElement=>roomLabelElement.EMail.Equals(x, StringComparison.InvariantCultureIgnoreCase))).Where(element=>element is not null).ToList();
-        var elementsNotFound = elements.Where(element=>sortOrderEmails.Any(email=>email.Equals(element.EMail, StringComparison.InvariantCultureIgnoreCase))).ToList();
+        var elementsNotFound = elements.Where(element=>!sortOrderEmails.Any(email=>email.Equals(element.EMail, StringComparison.InvariantCultureIgnoreCase))).ToList();
         return [.. elementsOrdered.Concat(elementsNotFound).Where(x=>x is not null)];
     }
 
