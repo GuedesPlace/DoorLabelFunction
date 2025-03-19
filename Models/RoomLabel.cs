@@ -1,8 +1,9 @@
 namespace GuedesPlace.DoorLabel.Models;
 
 public class RoomLabel{
-    public string Name { get; set; }
-    public List<RoomLabelElement> Elements{ get; set; }
-    public DynamicsDisplayConfiguration Configuration { get; set; }
-    public byte[]? picture {set;get;}
+    public required string Name { get; set; }
+    public required List<RoomLabelElement> Elements{ get; set; }
+    public required DynamicsDisplayConfiguration Configuration { get; set; }
+    public required string SpecialSortOrder {get;set;} 
+    public byte[]? Picture {set;get;}
 }

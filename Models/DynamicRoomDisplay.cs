@@ -12,6 +12,8 @@ public class DynamicsRoomDisplay
     public List<DynamicsUsers> Users { set; get; }
     [JsonProperty(PropertyName ="gp_configuration")]
     public DynamicsDisplayConfiguration Configuration {set;get;}
+    [JsonProperty(PropertyName ="gp_specialorder")]
+    public string SpecialOrder {set;get;}
 
 }
 
@@ -21,6 +23,8 @@ public class DynamicsUsers
     public string Name { get; set; }
     [JsonProperty(PropertyName = "title")]
     public string Title { get; set; }
+    [JsonProperty(PropertyName = "internalemailaddress")]
+    public string EMail { get; set; }
 }
 public class DynamicsDisplayConfiguration
 {

@@ -14,7 +14,7 @@ public class CheckDisplayStatus(ILogger<CheckDisplayStatus> logger, CrmEndpointS
     private readonly CrmEndpointService _crmEndpointService = crmEndpointService;
     private readonly DeviceEndpointService _deviceEndpointService = deviceEndpointService;
     private readonly GeneratePictureService _pictureService = pictureService;
-    private readonly SHA256 sha256Hash = SHA256.Create();
+    private readonly SHA256 _sha256Hash = SHA256.Create();
 
 
     [Function("CheckDisplayStatus")]
@@ -54,7 +54,7 @@ public class CheckDisplayStatus(ILogger<CheckDisplayStatus> logger, CrmEndpointS
     {
         var label = await _deviceEndpointService.GetRoomLabelAsync(device.CrmID, dynamicsConnection, crmURL);
         var labelString = JsonConvert.SerializeObject(label, Formatting.None);
-        var labelHash = GetHash(sha256Hash,labelString);
+        var labelHash = GetHash(_sha256Hash,labelString);
         _logger.LogInformation($"labelString...: {labelString}");
         _logger.LogInformation($"labelHash: {labelHash} -> {device.PictureHash}");
         if (labelHash != device.PictureHash) {

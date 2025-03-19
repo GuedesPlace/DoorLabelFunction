@@ -1,9 +1,6 @@
 using Microsoft.Extensions.Logging;
 using GuedesPlace.DoorLabel.Models;
 using SkiaSharp;
-using Azure.Core.GeoJson;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.ObjectPool;
 
 namespace GuedesPlace.DoorLabel.Services;
 public class GeneratePictureService(ILogger<GeneratePictureService> logger)
@@ -28,15 +25,16 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
             //paint.Color = SKColors.Black;
             //var square = new SKRect(0, 0, 540, 54);
             //canvas.DrawRect(square, paint);
-            if (configuration.gp_has_picture && label.picture != null)
+            if (configuration.gp_has_picture && label.Picture != null)
             {
-                ProcessPictureToCanvas(canvas, label.picture, configuration);
+                ProcessPictureToCanvas(canvas, label.Picture, configuration);
             }
             var xPostion = CalculateXPosition(configuration.gp_alignment_header, configuration.gp_margin_left, configuration.gp_margin_right, label.Name, paintHeader);
             canvas.DrawText(label.Name, xPostion, (float)configuration.gp_start_header_block, paintHeader);
             var startPoint = (float)configuration.gp_start_employee_block;
             var lineLength = 540 - configuration.gp_margin_left - configuration.gp_margin_right;
-            foreach (var element in label.Elements)
+            var orderedElements = OrderElements(label.Elements, label.SpecialSortOrder);
+            foreach (var element in orderedElements)
             {
                 startPoint = WriteText(canvas,element.Name,lineLength,paintName,configuration.gp_alignment_name,startPoint,configuration);
                 startPoint = WriteText(canvas,element.Title,lineLength,paintSubtitle,configuration.gp_alignment_title,startPoint,configuration);
@@ -69,6 +67,17 @@ public class GeneratePictureService(ILogger<GeneratePictureService> logger)
 
         skBitmap.Encode(stream, SKEncodedImageFormat.Png, quality: 100);//save the image file
         return new PictureCreationResult() { Data = new BinaryData(stream.ToArray()), GreyScale = grayScale };
+    }
+
+    private static List<RoomLabelElement> OrderElements(List<RoomLabelElement> elements, string specialSortOrder)
+    {
+        if(string.IsNullOrWhiteSpace(specialSortOrder)) {
+            return elements;
+        }
+        var sortOrderEmails = specialSortOrder.Split("\n").Select(x=>x.Trim()).ToList();
+        var elementsOrdered = sortOrderEmails.Select(x=>elements.Find(roomLabelElement=>roomLabelElement.EMail.Equals(x, StringComparison.InvariantCultureIgnoreCase))).Where(element=>element is not null).ToList();
+        var elementsNotFound = elements.Where(element=>sortOrderEmails.Any(email=>email.Equals(element.EMail, StringComparison.InvariantCultureIgnoreCase))).ToList();
+        return [.. elementsOrdered.Concat(elementsNotFound).Where(x=>x is not null)];
     }
 
     private void ProcessPictureToCanvas(SKCanvas canvas, byte[] data, DynamicsDisplayConfiguration configuration)

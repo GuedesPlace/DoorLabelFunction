@@ -57,9 +57,9 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
         var result = await blobClient.DownloadContentAsync();
         return result.Value.Content;
     }
-    public async Task<RoomLabel> GetRoomLabelAsync(string deviceId, DynamicsConnector connector, string crmURL)
+    public async Task<RoomLabel?> GetRoomLabelAsync(string deviceId, DynamicsConnector connector, string crmURL)
     {
-        var query = $"gp_roomdisplaies({deviceId})?$expand=gp_roomdisplay_SystemUser_SystemUser($select=fullname,title),gp_configuration";
+        var query = $"gp_roomdisplaies({deviceId})?$expand=gp_roomdisplay_SystemUser_SystemUser($select=fullname,title,internalemailaddress),gp_configuration";
         var result = await connector.GetAsync<DynamicsRoomDisplay>(query);
         if (result == null)
         {
@@ -69,9 +69,10 @@ public class DeviceEndpointService(ILogger<DeviceEndpointService> logger, Extend
         return new RoomLabel()
         {
             Name = result.Name,
-            Elements = result.Users.Select(user => new RoomLabelElement() { Name = user.Name, Title = user.Title }).OrderBy(e1 => e1.Name).ToList(),
+            Elements = [.. result.Users.Select(user => new RoomLabelElement() { Name = user.Name, Title = user.Title, EMail=user.EMail }).OrderBy(e1 => e1.Name)],
             Configuration = result.Configuration,
-            picture = pictureData
+            Picture = pictureData,
+            SpecialSortOrder = result.SpecialOrder
         };
     }
 
